@@ -230,6 +230,7 @@ def api_stats():
     data = load_listings()
     iaai = [x for x in data if x.get("source") == "IAAI"]
     copart = [x for x in data if x.get("source") == "Copart"]
+    ebay = [x for x in data if x.get("source") == "eBay"]
 
     dates = [x.get("date_found", "") for x in data if x.get("date_found")]
     last_scan = max(dates) if dates else "nigdy"
@@ -240,6 +241,7 @@ def api_stats():
         "total": len(data),
         "iaai": len(iaai),
         "copart": len(copart),
+        "ebay": len(ebay),
         "last_scan": last_scan,
         "usd_pln": round(rate, 2),
     })
@@ -281,6 +283,8 @@ HTML_TEMPLATE = """
             --blue-dim: rgba(107,163,207,0.10);
             --purple: #a78bda;
             --purple-dim: rgba(167,139,218,0.10);
+            --emerald: #5ec49e;
+            --emerald-dim: rgba(94,196,158,0.10);
             --r: 8px;
             --r-sm: 5px;
             --shadow: 0 12px 40px rgba(0,0,0,0.55);
@@ -442,6 +446,7 @@ HTML_TEMPLATE = """
         }
         .badge-iaai { background: var(--blue-dim); color: var(--blue); }
         .badge-copart { background: var(--purple-dim); color: var(--purple); }
+        .badge-ebay { background: var(--emerald-dim); color: var(--emerald); }
 
         .damage-tag {
             display:inline-block; padding:3px 10px; border-radius: var(--r-sm);
@@ -486,6 +491,7 @@ HTML_TEMPLATE = """
         }
         a.vin-link:hover { color: var(--accent); text-decoration:underline; }
         .auction-val { white-space:nowrap; color: var(--text-2); font-size:12px; }
+        .auction-soon { color: var(--yellow); font-size:11px; font-weight:500; font-style:italic; }
 
         /* ── Loading / Empty states ── */
         .loading-bar {
@@ -658,6 +664,10 @@ HTML_TEMPLATE = """
             <div class="stat-value" id="stat-copart">&mdash;</div>
         </div>
         <div class="stat-card">
+            <div class="stat-label">eBay</div>
+            <div class="stat-value" id="stat-ebay">&mdash;</div>
+        </div>
+        <div class="stat-card">
             <div class="stat-label">Razem</div>
             <div class="stat-value accent" id="stat-total">&mdash;</div>
         </div>
@@ -670,6 +680,7 @@ HTML_TEMPLATE = """
         <option value="">Wszystkie</option>
         <option value="IAAI">IAAI</option>
         <option value="Copart">Copart</option>
+        <option value="eBay">eBay</option>
     </select>
     <div class="multi-select" id="filter-damage-wrap">
         <button class="multi-select-btn" id="filter-damage-btn" type="button">Uszkodzenia &#9662;</button>
@@ -758,6 +769,7 @@ async function loadData() {
         const s = await statRes.json();
         document.getElementById('stat-iaai').textContent = s.iaai;
         document.getElementById('stat-copart').textContent = s.copart;
+        document.getElementById('stat-ebay').textContent = s.ebay;
         document.getElementById('stat-total').textContent = s.total;
         document.getElementById('stat-rate').textContent = s.usd_pln;
         document.getElementById('stat-scan').textContent = s.last_scan;
@@ -902,7 +914,7 @@ function renderTable() {
             +'</td></tr>';
     } else {
         tbody.innerHTML = filtered.map(d => {
-            const sc = d.source==='IAAI' ? 'badge-iaai' : 'badge-copart';
+            const sc = d.source==='IAAI' ? 'badge-iaai' : d.source==='eBay' ? 'badge-ebay' : 'badge-copart';
             const img = d.image_url
                 ? '<img class="thumb" src="'+esc(d.image_url)+'" loading="lazy" alt="'+esc(d.make_model)+'" onerror="this.outerHTML=\\'<div class=no-img>brak</div>\\'">'
                 : '<div class="no-img">brak</div>';
@@ -919,7 +931,7 @@ function renderTable() {
                 +'<td class="num bid-val">'+(esc(d.bid)||'<span class="empty">&mdash;</span>')+'</td>'
                 +'<td class="num buy-val">'+(esc(d.buy_now)||'')+'</td>'
                 +'<td class="num odo-val">'+(esc(d.odometer)||'<span class="empty">&mdash;</span>')+'</td>'
-                +'<td class="auction-val">'+(esc(d.auction_date)||'<span class="empty">&mdash;</span>')+'</td>'
+                +'<td class="auction-val">'+(esc(d.auction_date)||'<span class="auction-soon">wkrotce</span>')+'</td>'
                 +'<td class="date-val">'+esc(d.date_found)+'</td>'
                 +'</tr>';
         }).join('');
@@ -1088,6 +1100,10 @@ function getFullResUrl(thumbUrl) {
     /* Copart: _thb.jpg -> _ful.jpg for full resolution */
     if (thumbUrl.includes('copart.com')) {
         return thumbUrl.replace('_thb.jpg', '_ful.jpg');
+    }
+    /* eBay: replace s-l225 / s-l140 / s-l300 thumbnail with s-l1600 full res */
+    if (thumbUrl.includes('ebayimg.com')) {
+        return thumbUrl.replace(/s-l\\d+/, 's-l1600');
     }
     return thumbUrl;
 }

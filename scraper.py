@@ -11,6 +11,7 @@ Używa:
 import json
 import os
 import re
+import subprocess
 import warnings
 from datetime import datetime
 from typing import Dict, List, Optional, Set
@@ -356,6 +357,215 @@ def _parse_copart_lot(lot: Dict) -> Optional[Dict]:
     }
 
 
+# ── eBay Motors (HTML via curl – eBay blokuje TLS fingerprint Pythona) ────────
+import time as _time
+
+
+def _curl_get(url: str) -> str:
+    """Pobiera stronę via curl (omija eBay TLS fingerprinting)."""
+    try:
+        result = subprocess.run(
+            [
+                "curl", "-s", "-L", "--compressed",
+                "-H", f"User-Agent: {USER_AGENT}",
+                "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "-H", "Accept-Language: en-US,en;q=0.9",
+                url,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=REQUEST_TIMEOUT + 10,
+        )
+        return result.stdout
+    except Exception as e:
+        print(f"[curl] Błąd: {e}")
+        return ""
+
+
+def scrape_ebay(session: requests.Session) -> List[Dict]:
+    """Pobiera oferty Volvo XC40 z eBay Motors (Cars & Trucks)."""
+    query = f"{SEARCH_MAKE} {SEARCH_MODEL}"
+    url = (
+        f"https://www.ebay.com/sch/Cars-Trucks/6001/i.html"
+        f"?_nkw={quote_plus(query)}&_sacat=6001&_ipg=120"
+        f"&LH_All=1&_sop=10"
+    )
+
+    print(f"[eBay] Pobieram: {url}")
+
+    # Retry z backoff – eBay czasem blokuje przy pierwszej próbie
+    max_retries = 3
+    for attempt in range(max_retries):
+        html = _curl_get(url)
+        if not html:
+            print("[eBay] Brak odpowiedzi.")
+            return []
+
+        soup = BeautifulSoup(html, "html.parser")
+        title = soup.select_one("title")
+        title_text = title.get_text(strip=True) if title else ""
+
+        # Sprawdź, czy nie jesteśmy blokowani
+        if "pardon" in title_text.lower() or "interruption" in title_text.lower():
+            wait = 5 * (attempt + 1)
+            print(f"[eBay] Bot detection (próba {attempt+1}/{max_retries}), czekam {wait}s...")
+            _time.sleep(wait)
+            continue
+
+        cards = soup.select("li.s-card")
+        if cards:
+            break
+    else:
+        print("[eBay] Nie udało się ominąć ochrony po 3 próbach.")
+        return []
+
+    if not cards:
+        print("[eBay] Nie znaleziono kart (li.s-card).")
+        return []
+
+    results = []
+    for card in cards:
+        parsed = _parse_ebay_card(card)
+        if parsed:
+            results.append(parsed)
+
+    print(f"[eBay] Znaleziono {len(results)} ofert.")
+    return results
+
+
+def _parse_ebay_card(card) -> Optional[Dict]:
+    """Parsuje kartę pojazdu z eBay search results (nowy format s-card)."""
+    # Tytuł
+    title_el = card.select_one(".s-card__title")
+    if not title_el:
+        return None
+    title = title_el.get_text(strip=True)
+    # Wyczyść dopisek eBay
+    title = re.sub(r"Opens in a new (?:window|tab).*$", "", title).strip()
+
+    # Pomijaj promo
+    if "shop on ebay" in title.lower() or not title:
+        return None
+
+    # Sprawdź, czy to faktycznie Volvo XC40
+    if SEARCH_MODEL.lower() not in title.lower():
+        return None
+
+    # Link
+    link_el = card.select_one("a[href*='/itm/']")
+    link = ""
+    if link_el and link_el.get("href"):
+        href = link_el["href"]
+        # Wyczyść parametry trackingowe, zachowaj item ID
+        m = re.search(r"(https?://(?:www\.)?ebay\.com/itm/\d+)", href)
+        link = m.group(1) if m else href.split("?")[0]
+
+    # Obraz
+    img_el = card.select_one("img")
+    image_url = ""
+    if img_el:
+        image_url = img_el.get("src", "") or img_el.get("data-src", "") or ""
+
+    # Parsuj atrybuty z span.su-styled-text
+    attrs = {}
+    for span in card.select("span.su-styled-text"):
+        txt = span.get_text(strip=True)
+        if ":" in txt:
+            key, _, val = txt.partition(":")
+            attrs[key.strip().lower()] = val.strip()
+
+    # Rok
+    year = attrs.get("year", "")
+    if not year:
+        ym = re.search(r"\b(19|20)\d{2}\b", title)
+        year = ym.group(0) if ym else ""
+
+    make_model = title.replace(year, "").strip() if year else title
+
+    # Przebieg
+    miles = attrs.get("miles", "")
+    odometer = f"{miles} mi" if miles else ""
+
+    # Ceny – eBay ma zwykle 1-2 bloki .s-card__price
+    prices = card.select(".s-card__price")
+    bid_price = ""
+    buy_now_price = ""
+    main_price = ""
+
+    # Kontekst (auction vs buy now)
+    price_labels = card.select("span.su-styled-text.secondary.large")
+    label_texts = [s.get_text(strip=True).lower() for s in price_labels]
+
+    has_bids = any("bid" in t for t in label_texts)
+    has_buy_now = any("buy it now" in t or "best offer" in t for t in label_texts)
+
+    for p in prices:
+        ptxt = p.get_text(strip=True)
+        if not main_price:
+            main_price = ptxt
+        elif not buy_now_price:
+            buy_now_price = ptxt
+
+    if has_bids and main_price:
+        bid_price = main_price
+    if has_buy_now:
+        if buy_now_price:
+            pass  # already set
+        elif not has_bids:
+            buy_now_price = main_price
+
+    # Czas aukcji
+    time_left_el = card.select_one(".s-card__time-left")
+    time_end_el = card.select_one(".s-card__time-end")
+    auction_date = ""
+    if time_left_el:
+        auction_date = time_left_el.get_text(strip=True)
+    if time_end_el:
+        end_txt = time_end_el.get_text(strip=True).strip("()")
+        if end_txt:
+            auction_date = f"{auction_date} ({end_txt})" if auction_date else end_txt
+
+    # Kondycja
+    subtitle_el = card.select_one(".s-card__subtitle")
+    condition = ""
+    if subtitle_el:
+        cond_spans = subtitle_el.select("span.su-styled-text")
+        for cs in cond_spans:
+            t = cs.get_text(strip=True)
+            if t and "pre-owned" in t.lower():
+                condition = "Pre-Owned"
+            elif t and "new" in t.lower():
+                condition = "New"
+
+    # Lokalizacja
+    location = ""
+    for t in label_texts:
+        if "located in" in t:
+            location = t.replace("located in", "").strip().title()
+
+    return {
+        "source": "eBay",
+        "name": title,
+        "year": year,
+        "make_model": make_model,
+        "vin": "",
+        "odometer": odometer,
+        "title_doc": condition,
+        "damage": "",
+        "acv": main_price if not has_bids and not has_buy_now else "",
+        "est_value": main_price,
+        "location": location,
+        "drive_status": "",
+        "keys": "",
+        "bid": bid_price,
+        "buy_now": buy_now_price or (main_price if has_buy_now else ""),
+        "auction_date": auction_date,
+        "link": link,
+        "image_url": image_url,
+        "date_found": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+
+
 def _map_copart_drive_status(lcd: str) -> str:
     """Mapuje Copart lcd (lot condition description) na czytelny status."""
     if not lcd:
@@ -415,6 +625,19 @@ def run_scraper():
                 existing_ids.add(item["link"])
     except Exception as e:
         print(f"[Copart] Błąd: {e}")
+
+    # ── eBay Motors ──
+    print("\n" + "─" * 40)
+    print("  eBay Motors")
+    print("─" * 40)
+    try:
+        ebay_results = scrape_ebay(session)
+        for item in ebay_results:
+            if item["link"] and item["link"] not in existing_ids:
+                new_listings.append(item)
+                existing_ids.add(item["link"])
+    except Exception as e:
+        print(f"[eBay] Błąd: {e}")
 
     # ── Podsumowanie ──
     print("\n" + "=" * 60)
