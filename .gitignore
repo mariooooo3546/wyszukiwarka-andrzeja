@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.vercel/
+data/copart_api_response.json
+.env
