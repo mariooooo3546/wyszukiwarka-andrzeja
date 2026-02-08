@@ -187,14 +187,34 @@ def api_listings():
     return jsonify(normalized)
 
 
+_REFRESH_COOLDOWN = 3600  # 1 godzina w sekundach
+_last_refresh_ts = 0.0
+
+
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
     """Uruchamia scraper w tle i zwraca status."""
+    global _last_refresh_ts
+
     if IS_VERCEL:
         return jsonify({
             "status": "skipped",
             "message": "Odswiezanie niedostepne na Vercel. Dane aktualizowane automatycznie."
         })
+
+    now = time.time()
+    elapsed = now - _last_refresh_ts
+    if elapsed < _REFRESH_COOLDOWN:
+        remaining = int(_REFRESH_COOLDOWN - elapsed)
+        mins = remaining // 60
+        secs = remaining % 60
+        return jsonify({
+            "status": "cooldown",
+            "remaining": remaining,
+            "message": f"Poczekaj jeszcze {mins}m {secs:02d}s do nastepnego skanowania."
+        })
+
+    _last_refresh_ts = now
 
     def run_scraper():
         scraper_path = os.path.join(_PROJECT_ROOT, "scraper.py")
@@ -233,10 +253,10 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Volvo XC40 &mdash; Scraper</title>
+    <title>Wyszukiwarka Andrzeja</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
             --font: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -248,7 +268,7 @@ HTML_TEMPLATE = """
             --border-strong: rgba(255,255,255,0.10);
             --text-1: #f0f0f2;
             --text-2: #9494a0;
-            --text-3: #5c5c6a;
+            --text-3: #6e6e7e;
             --accent: #c9a55a;
             --accent-dim: rgba(201,165,90,0.12);
             --green: #6bcf7f;
@@ -451,22 +471,150 @@ HTML_TEMPLATE = """
         .vehicle-name { font-weight:500; }
         .empty { color: var(--text-3); }
 
-        a.lot-link {
-            color: var(--accent); text-decoration:none; font-weight:600;
-            font-size:12px; letter-spacing:.02em; transition: opacity .2s;
+        a.vehicle-link {
+            color: var(--text-1); text-decoration:none; font-weight:500;
+            transition: color .2s var(--ease);
         }
-        a.lot-link:hover { opacity:.7; }
+        a.vehicle-link:hover { color: var(--accent); }
+        a.vin-link {
+            color: var(--text-2); text-decoration:none; font-family:'Roboto Mono',monospace;
+            font-size:11px; letter-spacing:.03em; transition: color .2s var(--ease);
+            white-space:nowrap;
+        }
+        a.vin-link:hover { color: var(--accent); text-decoration:underline; }
+        .auction-val { white-space:nowrap; color: var(--text-2); font-size:12px; }
 
-        @media (max-width:768px) {
-            .header { padding:24px 20px 0; }
-            .header-top { flex-direction:column; align-items:flex-start; gap:12px; }
-            .header-meta { text-align:left; }
-            .toolbar { padding:0 20px; }
-            .table-wrap { padding:0 12px 32px; }
-            td, th { padding:10px 8px; font-size:12px; }
-            .thumb, .no-img { width:64px; height:44px; }
-            .stats { grid-template-columns: repeat(2,1fr); }
+        /* ── Loading / Empty states ── */
+        .loading-bar {
+            position:fixed; top:0; left:0; width:100%; height:3px; z-index:10000;
+            background: var(--bg-raised); overflow:hidden;
         }
+        .loading-bar::after {
+            content:''; display:block; width:30%; height:100%;
+            background: var(--accent); border-radius:2px;
+            animation: loadSlide 1.2s ease-in-out infinite;
+        }
+        .loading-bar.hide { display:none; }
+        @keyframes loadSlide {
+            0% { transform:translateX(-100%); }
+            100% { transform:translateX(400%); }
+        }
+        .empty-state {
+            text-align:center; padding:64px 24px; color: var(--text-3);
+        }
+        .empty-state-icon { font-size:48px; margin-bottom:16px; opacity:.4; }
+        .empty-state-text { font-size:15px; font-weight:500; margin-bottom:8px; color: var(--text-2); }
+        .empty-state-sub { font-size:13px; }
+
+        /* ── Active filter indicator ── */
+        .toolbar select.active-filter {
+            border-color: var(--accent); color: var(--accent);
+        }
+
+        /* ── Reset filters ── */
+        .btn-reset {
+            background:transparent; border:1px solid var(--border);
+            color: var(--text-3); font-size:11px; font-weight:500; padding:8px 14px;
+            border-radius: var(--r-sm); cursor:pointer; font-family: var(--font);
+            transition: all .2s var(--ease); display:none;
+        }
+        .btn-reset.visible { display:inline-flex; align-items:center; gap:5px; }
+        .btn-reset:hover { border-color: var(--red); color: var(--red); }
+
+        /* ── Scroll hint for table on mobile ── */
+        .table-scroll-hint {
+            display:none; text-align:center; padding:8px;
+            font-size:11px; color: var(--text-3); letter-spacing:.04em;
+        }
+
+        /* ── Focus states (WCAG) ── */
+        *:focus-visible {
+            outline:2px solid var(--accent); outline-offset:2px;
+        }
+        .toolbar input:focus-visible, .toolbar select:focus-visible, .multi-select-btn:focus-visible {
+            outline:2px solid var(--accent); outline-offset:1px;
+        }
+
+        /* ── Responsive: tablet ── */
+        @media (max-width:1024px) {
+            .header { padding:32px 24px 0; }
+            .toolbar { padding:0 24px; }
+            .table-wrap { padding:0 24px 48px; }
+            .stat-card { padding:16px 20px; }
+            .stat-value { font-size:24px; }
+        }
+
+        /* ── Responsive: mobile ── */
+        @media (max-width:768px) {
+            .header { padding:20px 16px 0; }
+            .header-top { flex-direction:column; align-items:flex-start; gap:8px; }
+            .header h1 { font-size:24px; }
+            .header-meta { text-align:left; font-size:12px; }
+            .stats { grid-template-columns: repeat(3,1fr); gap:8px; margin-bottom:20px; }
+            .stat-card { padding:12px 14px; }
+            .stat-label { font-size:9px; margin-bottom:4px; }
+            .stat-value { font-size:20px; }
+
+            .toolbar {
+                padding:0 16px; gap:8px; margin-bottom:16px;
+            }
+            .toolbar input, .toolbar select, .multi-select-btn {
+                padding:12px 14px; font-size:14px; min-height:44px;
+            }
+            .toolbar input[type="text"] { width:100%; }
+            .toolbar select { min-width:0; flex:1; }
+            .btn, .btn-outline, .btn-reset { min-height:44px; padding:12px 16px; font-size:14px; }
+
+            .table-scroll-hint { display:block; }
+            .table-wrap { padding:0 0 32px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+            table { min-width:900px; font-size:12px; }
+            td, th { padding:10px 8px; }
+            .thumb, .no-img { width:56px; height:40px; }
+            .badge { font-size:9px; padding:2px 7px; }
+            .damage-tag, .status-tag { font-size:10px; padding:2px 7px; }
+            a.vin-link { font-size:10px; }
+        }
+
+        /* ── Responsive: small mobile ── */
+        @media (max-width:480px) {
+            .stats { grid-template-columns: repeat(3,1fr); gap:6px; }
+            .stat-card { padding:10px 10px; }
+            .stat-value { font-size:18px; }
+            .stat-label { font-size:8px; letter-spacing:.06em; }
+            .toolbar { gap:6px; }
+            .toolbar select { flex:1 1 45%; min-width:0; }
+        }
+
+        /* ── Lightbox ── */
+        .lightbox {
+            position:fixed; inset:0; z-index:9999;
+            background:rgba(0,0,0,.85); backdrop-filter:blur(8px);
+            display:flex; align-items:center; justify-content:center;
+            opacity:0; visibility:hidden;
+            transition: opacity .3s var(--ease), visibility .3s;
+            cursor:zoom-out;
+        }
+        .lightbox.open { opacity:1; visibility:visible; }
+        .lightbox img {
+            max-width:90vw; max-height:85vh; object-fit:contain;
+            border-radius: var(--r); box-shadow: 0 24px 80px rgba(0,0,0,.6);
+            transform:scale(.92); transition: transform .35s var(--ease);
+        }
+        .lightbox.open img { transform:scale(1); }
+        .lightbox-close {
+            position:absolute; top:24px; right:28px;
+            width:40px; height:40px; border:none; border-radius:50%;
+            background:rgba(255,255,255,.12); color:#fff; font-size:20px;
+            cursor:pointer; display:flex; align-items:center; justify-content:center;
+            transition: background .2s;
+        }
+        .lightbox-close:hover { background:rgba(255,255,255,.25); }
+        .lightbox-info {
+            position:absolute; bottom:28px; left:50%; transform:translateX(-50%);
+            color:rgba(255,255,255,.5); font-size:12px; letter-spacing:.04em;
+        }
+
+        .thumb { cursor:zoom-in; }
 
         .toast {
             position:fixed; bottom:32px; right:32px;
@@ -487,9 +635,11 @@ HTML_TEMPLATE = """
 </head>
 <body>
 
+<div id="loading-bar" class="loading-bar"></div>
+
 <div class="header">
     <div class="header-top">
-        <h1>Volvo <span>XC40</span></h1>
+        <h1>Wyszukiwarka <span>Andrzeja</span></h1>
         <div class="header-meta">
             Kurs <strong id="stat-rate">&mdash;</strong> PLN/USD<br>
             Skan: <strong id="stat-scan">&mdash;</strong>
@@ -536,12 +686,30 @@ HTML_TEMPLATE = """
     <select id="filter-year-to">
         <option value="">Do roku</option>
     </select>
+    <select id="filter-odo-from">
+        <option value="">Przebieg od</option>
+        <option value="0">0 km</option>
+        <option value="50000">50 tys. km</option>
+        <option value="100000">100 tys. km</option>
+        <option value="150000">150 tys. km</option>
+        <option value="200000">200 tys. km</option>
+        <option value="250000">250 tys. km</option>
+    </select>
+    <select id="filter-odo-to">
+        <option value="">Przebieg do</option>
+        <option value="50000">50 tys. km</option>
+        <option value="100000">100 tys. km</option>
+        <option value="150000">150 tys. km</option>
+        <option value="200000">200 tys. km</option>
+        <option value="250000">250 tys. km</option>
+    </select>
+    <button class="btn-reset" id="btn-reset" onclick="resetFilters()" title="Wyczysc wszystkie filtry">&#10005; Reset</button>
     <div class="spacer"></div>
     <span class="result-count" id="result-count"></span>
-    <button class="btn btn-outline" onclick="exportCSV()">CSV</button>
     <button class="btn" id="btn-refresh" onclick="refreshData()">Skanuj</button>
 </div>
 
+<div class="table-scroll-hint">&#8592; przewin tabele &#8594;</div>
 <div class="table-wrap">
     <table>
         <thead>
@@ -550,6 +718,7 @@ HTML_TEMPLATE = """
                 <th data-sort="source">Zrodlo <span class="arrow">&#9650;</span></th>
                 <th data-sort="year">Rok <span class="arrow">&#9650;</span></th>
                 <th data-sort="name">Pojazd <span class="arrow">&#9650;</span></th>
+                <th data-sort="vin">VIN <span class="arrow">&#9650;</span></th>
                 <th data-sort="damage">Uszkodzenie <span class="arrow">&#9650;</span></th>
                 <th data-sort="drive_status">Status <span class="arrow">&#9650;</span></th>
                 <th data-sort="title_doc">Tytul <span class="arrow">&#9650;</span></th>
@@ -557,8 +726,8 @@ HTML_TEMPLATE = """
                 <th data-sort="bid" class="num">Oferta <span class="arrow">&#9650;</span></th>
                 <th data-sort="buy_now" class="num">Kup teraz <span class="arrow">&#9650;</span></th>
                 <th data-sort="odometer" class="num">Przebieg <span class="arrow">&#9650;</span></th>
+                <th data-sort="auction_date">Aukcja <span class="arrow">&#9650;</span></th>
                 <th data-sort="date_found">Dodano <span class="arrow">&#9650;</span></th>
-                <th></th>
             </tr>
         </thead>
         <tbody id="table-body"></tbody>
@@ -567,22 +736,35 @@ HTML_TEMPLATE = """
 
 <div class="toast" id="toast"></div>
 
+<div id="lightbox" class="lightbox">
+    <button id="lightbox-close" class="lightbox-close" aria-label="Zamknij">&times;</button>
+    <img id="lightbox-img" src="" alt="">
+    <div id="lightbox-info" class="lightbox-info"></div>
+</div>
+
 <script>
 let allData = [];
 let sortCol = 'date_found';
 let sortAsc = false;
 
 async function loadData() {
-    const [listRes, statRes] = await Promise.all([fetch('/api/listings'), fetch('/api/stats')]);
-    allData = await listRes.json();
-    const s = await statRes.json();
-    document.getElementById('stat-iaai').textContent = s.iaai;
-    document.getElementById('stat-copart').textContent = s.copart;
-    document.getElementById('stat-total').textContent = s.total;
-    document.getElementById('stat-rate').textContent = s.usd_pln;
-    document.getElementById('stat-scan').textContent = s.last_scan;
-    populateFilters();
-    renderTable();
+    document.getElementById('loading-bar').classList.remove('hide');
+    try {
+        const [listRes, statRes] = await Promise.all([fetch('/api/listings'), fetch('/api/stats')]);
+        allData = await listRes.json();
+        const s = await statRes.json();
+        document.getElementById('stat-iaai').textContent = s.iaai;
+        document.getElementById('stat-copart').textContent = s.copart;
+        document.getElementById('stat-total').textContent = s.total;
+        document.getElementById('stat-rate').textContent = s.usd_pln;
+        document.getElementById('stat-scan').textContent = s.last_scan;
+        populateFilters();
+        renderTable();
+    } catch(e) {
+        showToast('Blad ladowania danych. Sprobuj odswiezyc strone.');
+    } finally {
+        document.getElementById('loading-bar').classList.add('hide');
+    }
 }
 
 let selectedDamages = new Set();
@@ -623,12 +805,19 @@ function getFiltered() {
     const st = document.getElementById('filter-status').value;
     const yF = document.getElementById('filter-year-from').value;
     const yT = document.getElementById('filter-year-to').value;
+    const odoFrom = document.getElementById('filter-odo-from').value;
+    const odoTo = document.getElementById('filter-odo-to').value;
     return allData.filter(d => {
         if (src && d.source !== src) return false;
         if (selectedDamages.size > 0 && !selectedDamages.has(d.damage)) return false;
         if (st && d.drive_status !== st) return false;
         if (yF && parseInt(d.year) < parseInt(yF)) return false;
         if (yT && parseInt(d.year) > parseInt(yT)) return false;
+        if (odoFrom || odoTo) {
+            const km = parseInt(String(d.odometer||'').replace(/[^0-9]/g,'')) || 0;
+            if (odoFrom && km < parseInt(odoFrom)) return false;
+            if (odoTo && km > parseInt(odoTo)) return false;
+        }
         if (q) {
             const h = (d.name+d.vin+d.damage+d.title_doc+d.drive_status).toLowerCase();
             if (!h.includes(q)) return false;
@@ -689,35 +878,90 @@ function sortData(data) {
 
 function renderTable() {
     const filtered = sortData(getFiltered());
-    document.getElementById('result-count').textContent = filtered.length + ' wynikow';
+    const total = allData.length;
+    const count = filtered.length;
+    const rc = document.getElementById('result-count');
+    rc.textContent = count === total ? total + ' ofert' : count + ' z ' + total + ' ofert';
+
     const tbody = document.getElementById('table-body');
-    tbody.innerHTML = filtered.map(d => {
-        const sc = d.source==='IAAI' ? 'badge-iaai' : 'badge-copart';
-        const img = d.image_url
-            ? '<img class="thumb" src="'+esc(d.image_url)+'" loading="lazy" onerror="this.outerHTML=\\'<div class=no-img>brak</div>\\'">'
-            : '<div class="no-img">brak</div>';
-        return '<tr>'
-            +'<td>'+img+'</td>'
-            +'<td><span class="badge '+sc+'">'+esc(d.source)+'</span></td>'
-            +'<td class="year-val">'+esc(d.year)+'</td>'
-            +'<td class="vehicle-name">'+esc(d.make_model)+'</td>'
-            +'<td>'+(d.damage ? '<span class="damage-tag '+getDmgClass(d.damage)+'">'+esc(d.damage)+'</span>' : '<span class="empty">&mdash;</span>')+'</td>'
-            +'<td>'+(d.drive_status ? '<span class="status-tag '+getStatusClass(d.drive_status)+'">'+esc(d.drive_status)+'</span>' : '<span class="empty">&mdash;</span>')+'</td>'
-            +'<td><span class="title-tag '+getTitleClass(d.title_doc)+'">'+(esc(d.title_doc)||'&mdash;')+'</span></td>'
-            +'<td class="num price-val">'+(esc(d.price)||'<span class="empty">&mdash;</span>')+'</td>'
-            +'<td class="num bid-val">'+(esc(d.bid)||'<span class="empty">&mdash;</span>')+'</td>'
-            +'<td class="num buy-val">'+(esc(d.buy_now)||'')+'</td>'
-            +'<td class="num odo-val">'+(esc(d.odometer)||'<span class="empty">&mdash;</span>')+'</td>'
-            +'<td class="date-val">'+esc(d.date_found)+'</td>'
-            +'<td><a class="lot-link" href="'+esc(d.link)+'" target="_blank" rel="noopener">&rarr;</a></td>'
-            +'</tr>';
-    }).join('');
+
+    if (count === 0 && total > 0) {
+        tbody.innerHTML = '<tr><td colspan="14" class="empty-state">'
+            +'<div class="empty-state-icon">&#128269;</div>'
+            +'<div class="empty-state-text">Brak wynikow dla wybranych filtrow</div>'
+            +'<div class="empty-state-sub">Zmien kryteria wyszukiwania lub kliknij Reset</div>'
+            +'</td></tr>';
+    } else if (total === 0) {
+        tbody.innerHTML = '<tr><td colspan="14" class="empty-state">'
+            +'<div class="empty-state-icon">&#128666;</div>'
+            +'<div class="empty-state-text">Brak ofert w bazie</div>'
+            +'<div class="empty-state-sub">Kliknij Skanuj aby pobrac oferty</div>'
+            +'</td></tr>';
+    } else {
+        tbody.innerHTML = filtered.map(d => {
+            const sc = d.source==='IAAI' ? 'badge-iaai' : 'badge-copart';
+            const img = d.image_url
+                ? '<img class="thumb" src="'+esc(d.image_url)+'" loading="lazy" alt="'+esc(d.make_model)+'" onerror="this.outerHTML=\\'<div class=no-img>brak</div>\\'">'
+                : '<div class="no-img">brak</div>';
+            return '<tr>'
+                +'<td>'+img+'</td>'
+                +'<td><span class="badge '+sc+'">'+esc(d.source)+'</span></td>'
+                +'<td class="year-val">'+esc(d.year)+'</td>'
+                +'<td class="vehicle-name">'+(d.link ? '<a class="vehicle-link" href="'+esc(d.link)+'" target="_blank" rel="noopener">'+esc(d.make_model)+'</a>' : esc(d.make_model))+'</td>'
+                +'<td>'+(d.vin ? '<a class="vin-link" href="https://nextcar-usa.pl/pl/auta-z-usa/oferty/aktualne-oferty?szukaj='+encodeURIComponent(d.vin)+'" target="_blank" rel="noopener">'+esc(d.vin)+'</a>' : '<span class="empty">&mdash;</span>')+'</td>'
+                +'<td>'+(d.damage ? '<span class="damage-tag '+getDmgClass(d.damage)+'">'+esc(d.damage)+'</span>' : '<span class="empty">&mdash;</span>')+'</td>'
+                +'<td>'+(d.drive_status ? '<span class="status-tag '+getStatusClass(d.drive_status)+'">'+esc(d.drive_status)+'</span>' : '<span class="empty">&mdash;</span>')+'</td>'
+                +'<td><span class="title-tag '+getTitleClass(d.title_doc)+'">'+(esc(d.title_doc)||'&mdash;')+'</span></td>'
+                +'<td class="num price-val">'+(esc(d.price)||'<span class="empty">&mdash;</span>')+'</td>'
+                +'<td class="num bid-val">'+(esc(d.bid)||'<span class="empty">&mdash;</span>')+'</td>'
+                +'<td class="num buy-val">'+(esc(d.buy_now)||'')+'</td>'
+                +'<td class="num odo-val">'+(esc(d.odometer)||'<span class="empty">&mdash;</span>')+'</td>'
+                +'<td class="auction-val">'+(esc(d.auction_date)||'<span class="empty">&mdash;</span>')+'</td>'
+                +'<td class="date-val">'+esc(d.date_found)+'</td>'
+                +'</tr>';
+        }).join('');
+    }
 
     document.querySelectorAll('thead th').forEach(th => {
         th.classList.toggle('sorted', th.dataset.sort===sortCol);
         const a = th.querySelector('.arrow');
         if (a && th.dataset.sort===sortCol) a.innerHTML = sortAsc ? '&#9650;' : '&#9660;';
     });
+
+    updateFilterIndicators();
+}
+
+function updateFilterIndicators() {
+    const ids = ['filter-source','filter-status','filter-year-from','filter-year-to','filter-odo-from','filter-odo-to'];
+    let anyActive = false;
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        const active = el.value !== '';
+        el.classList.toggle('active-filter', active);
+        if (active) anyActive = true;
+    });
+    const q = document.getElementById('search').value;
+    if (q) anyActive = true;
+    if (selectedDamages.size > 0) anyActive = true;
+    document.getElementById('btn-reset').classList.toggle('visible', anyActive);
+}
+
+function resetFilters() {
+    document.getElementById('search').value = '';
+    document.getElementById('filter-source').value = '';
+    document.getElementById('filter-status').value = '';
+    document.getElementById('filter-year-from').value = '';
+    document.getElementById('filter-year-to').value = '';
+    document.getElementById('filter-odo-from').value = '';
+    document.getElementById('filter-odo-to').value = '';
+    selectedDamages = new Set();
+    const sa = document.getElementById('dmg-select-all');
+    sa.checked = true; sa.indeterminate = false;
+    document.querySelectorAll('#filter-damage-list input[type=checkbox]').forEach(c => c.checked = true);
+    document.getElementById('filter-damage-btn').textContent = 'Uszkodzenia \\u25BE';
+    document.getElementById('filter-damage-btn').classList.remove('active-filter');
+    renderTable();
+    showToast('Filtry wyczyszczone');
 }
 
 function getDmgClass(d) {
@@ -761,38 +1005,63 @@ document.getElementById('filter-source').addEventListener('change', renderTable)
 document.getElementById('filter-status').addEventListener('change', renderTable);
 document.getElementById('filter-year-from').addEventListener('change', renderTable);
 document.getElementById('filter-year-to').addEventListener('change', renderTable);
+document.getElementById('filter-odo-from').addEventListener('change', renderTable);
+document.getElementById('filter-odo-to').addEventListener('change', renderTable);
+
+let _cooldownInterval = null;
+
+function startCooldownTimer(btn, remaining) {
+    btn.disabled = true;
+    function tick() {
+        if (remaining <= 0) {
+            clearInterval(_cooldownInterval);
+            _cooldownInterval = null;
+            btn.disabled = false;
+            btn.textContent = 'Skanuj';
+            return;
+        }
+        const m = Math.floor(remaining / 60);
+        const s = remaining % 60;
+        btn.textContent = m + ':' + String(s).padStart(2,'0');
+        remaining--;
+    }
+    tick();
+    _cooldownInterval = setInterval(tick, 1000);
+}
 
 async function refreshData() {
     const btn = document.getElementById('btn-refresh');
-    btn.disabled=true; btn.textContent='Skanowanie...';
+    btn.disabled = true; btn.textContent = 'Skanowanie...';
+    const resp = await fetch('/api/refresh', {method:'POST'});
+    const result = await resp.json();
+
+    if (result.status === 'cooldown') {
+        showToast(result.message);
+        if (_cooldownInterval) clearInterval(_cooldownInterval);
+        startCooldownTimer(btn, result.remaining);
+        return;
+    }
+    if (result.status === 'skipped') {
+        showToast(result.message);
+        btn.disabled = false; btn.textContent = 'Skanuj';
+        return;
+    }
+
     showToast('Scraper uruchomiony...');
-    await fetch('/api/refresh', {method:'POST'});
-    const oldCount = allData.length; let attempts=0;
+    const oldCount = allData.length; let attempts = 0;
     const poll = setInterval(async () => {
         attempts++;
         const res = await fetch('/api/stats');
         const stats = await res.json();
-        if (stats.total!==oldCount || attempts>10) {
+        if (stats.total !== oldCount || attempts > 10) {
             clearInterval(poll); await loadData();
-            btn.disabled=false; btn.textContent='Skanuj';
-            const diff = stats.total-oldCount;
-            showToast(diff>0 ? 'Znaleziono '+diff+' nowych ofert' : 'Brak nowych ofert');
+            btn.disabled = false; btn.textContent = 'Skanuj';
+            const diff = stats.total - oldCount;
+            showToast(diff > 0 ? 'Znaleziono ' + diff + ' nowych ofert' : 'Brak nowych ofert');
         }
     }, 3000);
 }
 
-function exportCSV() {
-    const filtered = sortData(getFiltered());
-    const h = ['Zrodlo','Rok','Pojazd','Uszkodzenie','Status','Tytul','Wartosc PLN','Oferta PLN','Kup Teraz PLN','Przebieg','Data','Link'];
-    const rows = filtered.map(d => [d.source,d.year,d.make_model,d.damage,d.drive_status,d.title_doc,d.price,d.bid,d.buy_now,d.odometer,d.date_found,d.link]);
-    let csv = '\\uFEFF'+h.join(';')+'\\n';
-    rows.forEach(r => { csv += r.map(v => '"'+String(v||'').replace(/"/g,'""')+'"').join(';')+'\\n'; });
-    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'volvo_xc40_'+new Date().toISOString().slice(0,10)+'.csv';
-    a.click();
-}
 
 function showToast(msg) {
     const t = document.getElementById('toast');
@@ -801,6 +1070,38 @@ function showToast(msg) {
 }
 
 loadData();
+
+/* ── Lightbox ── */
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+const lightboxInfo = document.getElementById('lightbox-info');
+
+document.getElementById('table-body').addEventListener('click', e => {
+    const thumb = e.target.closest('.thumb');
+    if (!thumb) return;
+    const src = thumb.src.replace(/width=\\d+/, 'width=1200').replace(/height=\\d+/, 'height=900');
+    lightboxImg.src = src;
+    const row = thumb.closest('tr');
+    const name = row ? row.querySelector('.vehicle-name') : null;
+    lightboxInfo.textContent = name ? name.textContent : '';
+    lightbox.classList.add('open');
+    document.body.style.overflow = 'hidden';
+});
+
+function closeLightbox() {
+    lightbox.classList.remove('open');
+    document.body.style.overflow = '';
+    setTimeout(() => { lightboxImg.src = ''; }, 300);
+}
+
+lightbox.addEventListener('click', e => {
+    if (e.target === lightboxImg) return;
+    closeLightbox();
+});
+document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && lightbox.classList.contains('open')) closeLightbox();
+});
 </script>
 </body>
 </html>
@@ -809,7 +1110,7 @@ loadData();
 # ── Run ───────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("=" * 50)
-    print("  Auto Scraper - Panel WWW")
+    print("  Wyszukiwarka Andrzeja")
     print("  http://localhost:8080")
     print("=" * 50)
     app.run(debug=True, host="0.0.0.0", port=8080)

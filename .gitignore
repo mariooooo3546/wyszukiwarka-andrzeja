@@ -3,3 +3,4 @@ __pycache__/
 .vercel/
 data/copart_api_response.json
 .env
+.vercel
