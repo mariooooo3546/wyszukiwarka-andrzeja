@@ -199,7 +199,7 @@ def api_refresh():
     if IS_VERCEL:
         return jsonify({
             "status": "skipped",
-            "message": "Odswiezanie niedostepne na Vercel. Dane aktualizowane automatycznie."
+            "message": "Dane aktualizowane automatycznie co 6h. Nastepny skan wkrotce."
         })
 
     now = time.time()
@@ -287,17 +287,19 @@ HTML_TEMPLATE = """
             --ease: cubic-bezier(0.16, 1, 0.3, 1);
         }
         *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+        html { overflow-x:hidden; }
         ::selection { background: var(--accent); color: var(--bg-base); }
 
         body {
             font-family: var(--font); background: var(--bg-base); color: var(--text-1);
             min-height: 100vh; -webkit-font-smoothing: antialiased;
+            overflow-x:hidden; max-width:100vw;
             opacity:0; animation: fadeIn .6s var(--ease) .1s forwards;
         }
         @keyframes fadeIn { to { opacity:1; } }
 
         /* ── Header ── */
-        .header { padding: 48px 48px 0; }
+        .header { padding: 32px 24px 0; }
         .header-top {
             display:flex; justify-content:space-between; align-items:flex-end;
             margin-bottom: 32px;
@@ -333,7 +335,7 @@ HTML_TEMPLATE = """
 
         /* ── Toolbar ── */
         .toolbar {
-            padding:0 48px; margin-bottom:24px;
+            padding:0 24px; margin-bottom:20px;
             display:flex; gap:10px; flex-wrap:wrap; align-items:center;
         }
         .toolbar input, .toolbar select {
@@ -398,38 +400,38 @@ HTML_TEMPLATE = """
         .result-count { font-size:12px; color: var(--text-3); font-weight:500; letter-spacing:.02em; }
 
         /* ── Table ── */
-        .table-wrap { overflow-x:auto; padding:0 48px 64px; }
-        table { width:100%; border-collapse:collapse; font-size:13px; }
+        .table-wrap { overflow-x:auto; padding:0 24px 48px; }
+        table { width:100%; border-collapse:collapse; font-size:12px; table-layout:auto; }
         thead th {
             background: var(--bg-base); color: var(--text-3); font-weight:500;
-            text-transform:uppercase; font-size:10px; letter-spacing:.1em;
-            padding:14px 16px 12px; text-align:left;
+            text-transform:uppercase; font-size:9px; letter-spacing:.1em;
+            padding:10px 8px 8px; text-align:left;
             border-bottom:1px solid var(--border-strong);
             position:sticky; top:0; cursor:pointer; user-select:none;
             white-space:nowrap; z-index:10;
         }
         thead th:hover { color: var(--accent); }
-        thead th .arrow { font-size:9px; margin-left:4px; opacity:.3; }
+        thead th .arrow { font-size:8px; margin-left:3px; opacity:.3; }
         thead th.sorted .arrow { opacity:1; color: var(--accent); }
         tbody tr {
             border-bottom:1px solid var(--border);
             transition: background .2s var(--ease);
         }
         tbody tr:hover { background: var(--bg-raised); }
-        td { padding:14px 16px; vertical-align:middle; }
+        td { padding:10px 8px; vertical-align:middle; }
         td.num, th.num { text-align:right; }
 
         /* ── Miniatura ── */
         .thumb {
-            width:88px; height:60px; object-fit:cover;
+            width:72px; height:48px; object-fit:cover;
             border-radius: var(--r-sm); background: var(--bg-surface); display:block;
             transition: transform .3s var(--ease);
         }
         tr:hover .thumb { transform:scale(1.05); }
         .no-img {
-            width:88px; height:60px; border-radius: var(--r-sm);
+            width:72px; height:48px; border-radius: var(--r-sm);
             background: var(--bg-surface); display:flex; align-items:center;
-            justify-content:center; font-size:10px; color: var(--text-3);
+            justify-content:center; font-size:9px; color: var(--text-3);
             letter-spacing:.05em; text-transform:uppercase;
         }
 
@@ -468,7 +470,8 @@ HTML_TEMPLATE = """
         .odo-val { white-space:nowrap; color: var(--text-2); font-variant-numeric:tabular-nums; }
         .year-val { font-weight:600; font-size:14px; }
         .date-val { color: var(--text-3); font-size:11px; white-space:nowrap; }
-        .vehicle-name { font-weight:500; }
+        .vehicle-name { font-weight:500; max-width:200px; }
+        .vehicle-name a { display:inline-block; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .empty { color: var(--text-3); }
 
         a.vehicle-link {
@@ -537,11 +540,11 @@ HTML_TEMPLATE = """
 
         /* ── Responsive: tablet ── */
         @media (max-width:1024px) {
-            .header { padding:32px 24px 0; }
-            .toolbar { padding:0 24px; }
-            .table-wrap { padding:0 24px 48px; }
-            .stat-card { padding:16px 20px; }
-            .stat-value { font-size:24px; }
+            .header { padding:24px 16px 0; }
+            .toolbar { padding:0 16px; }
+            .table-wrap { padding:0 12px 32px; }
+            .stat-card { padding:14px 16px; }
+            .stat-value { font-size:22px; }
         }
 
         /* ── Responsive: mobile ── */
@@ -567,9 +570,9 @@ HTML_TEMPLATE = """
 
             .table-scroll-hint { display:block; }
             .table-wrap { padding:0 0 32px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
-            table { min-width:900px; font-size:12px; }
-            td, th { padding:10px 8px; }
-            .thumb, .no-img { width:56px; height:40px; }
+            table { min-width:800px; font-size:11px; }
+            td, th { padding:8px 6px; }
+            .thumb, .no-img { width:48px; height:34px; }
             .badge { font-size:9px; padding:2px 7px; }
             .damage-tag, .status-tag { font-size:10px; padding:2px 7px; }
             a.vin-link { font-size:10px; }
@@ -1076,10 +1079,23 @@ const lightbox = document.getElementById('lightbox');
 const lightboxImg = document.getElementById('lightbox-img');
 const lightboxInfo = document.getElementById('lightbox-info');
 
+function getFullResUrl(thumbUrl) {
+    if (!thumbUrl) return '';
+    /* IAAI: resizer endpoint - request large size */
+    if (thumbUrl.includes('vis.iaai.com')) {
+        return thumbUrl.replace(/width=\\d+/, 'width=1600').replace(/height=\\d+/, 'height=1200');
+    }
+    /* Copart: _thb.jpg -> _ful.jpg for full resolution */
+    if (thumbUrl.includes('copart.com')) {
+        return thumbUrl.replace('_thb.jpg', '_ful.jpg');
+    }
+    return thumbUrl;
+}
+
 document.getElementById('table-body').addEventListener('click', e => {
     const thumb = e.target.closest('.thumb');
     if (!thumb) return;
-    const src = thumb.src.replace(/width=\\d+/, 'width=1200').replace(/height=\\d+/, 'height=900');
+    const src = getFullResUrl(thumb.src);
     lightboxImg.src = src;
     const row = thumb.closest('tr');
     const name = row ? row.querySelector('.vehicle-name') : null;

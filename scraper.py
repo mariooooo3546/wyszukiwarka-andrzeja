@@ -67,7 +67,7 @@ def scrape_iaai(session: requests.Session) -> List[Dict]:
         print(f"[IAAI] Błąd HTTP: {resp.status_code}")
         return []
 
-    soup = BeautifulSoup(resp.text, "lxml")
+    soup = BeautifulSoup(resp.text, "html.parser")
     cards = soup.select(".table-row.table-row-border")
 
     results = []
@@ -131,7 +131,7 @@ def _parse_iaai_card(card) -> Optional[Dict]:
         "name": name,
         "year": year,
         "make_model": make_model,
-        "vin": vin.replace("******", "***"),
+        "vin": vin,
         "odometer": odometer,
         "title_doc": title_doc,
         "damage": damage,
@@ -308,7 +308,7 @@ def _parse_copart_lot(lot: Dict) -> Optional[Dict]:
             pass
 
     # VIN
-    vin = lot.get("fv", "").replace("******", "***")
+    vin = lot.get("fv", "")
 
     # Image
     image_url = lot.get("tims", "")
