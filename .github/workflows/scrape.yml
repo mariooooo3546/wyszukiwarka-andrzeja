@@ -41,6 +41,10 @@ jobs:
           git commit -m "Auto-update: $(date -u '+%Y-%m-%d %H:%M') UTC"
           git push
 
+      - name: Install uv (required by Vercel Python)
+        if: steps.changes.outputs.changed == 'true'
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
       - name: Deploy to Vercel
         if: steps.changes.outputs.changed == 'true'
         run: |
