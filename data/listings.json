@@ -7039,5 +7039,26 @@
     "link": "https://www.copart.com/lot/75112845",
     "image_url": "https://cs.copart.com/v1/AUTH_svc.pdoc00001/lpp/0126/56fb733d61fc448990b66d3497137c2a_thb.jpg",
     "date_found": "2026-02-12 01:04"
+  },
+  {
+    "source": "eBay",
+    "name": "New Listing2019 Volvo XC40 T4 Momentum",
+    "year": "2019",
+    "make_model": "New Listing Volvo XC40 T4 Momentum",
+    "vin": "",
+    "odometer": "49,886 mi",
+    "title_doc": "",
+    "damage": "",
+    "acv": "",
+    "est_value": "$17,995.00",
+    "location": "United States",
+    "drive_status": "",
+    "keys": "",
+    "bid": "",
+    "buy_now": "$17,995.00",
+    "auction_date": "",
+    "link": "https://www.ebay.com/itm/326998074457",
+    "image_url": "https://i.ebayimg.com/images/g/4BoAAeSwBgdpeZB3/s-l500.jpg",
+    "date_found": "2026-02-12 06:47"
   }
 ]
