@@ -7015,5 +7015,29 @@
     "link": "https://www.ebay.com/itm/267573681248",
     "image_url": "https://secureir.ebaystatic.com/pictures/aw/pics/stockimage1.jpg",
     "date_found": "2026-02-11 18:46"
+  },
+  {
+    "source": "Copart",
+    "name": "2023 VOLVO XC40 ULTIMATE",
+    "year": "2023",
+    "make_model": "VOLVO XC40 ULTIMATE",
+    "vin": "YV4L12UXXP2******",
+    "lot_number": "75112845",
+    "odometer": " (NOT ACTUAL)",
+    "est_value": "$32,918",
+    "repair_cost": "$43,774",
+    "title_doc": "SALVAGE TITLE",
+    "damage": "ALL OVER",
+    "secondary_damage": "",
+    "bid": "",
+    "buy_now": "",
+    "auction_date": "2026-02-16 15:00",
+    "location": "GA - ATLANTA EAST",
+    "engine": "2.0L  4",
+    "drive_status": "",
+    "keys": "EXEMPT",
+    "link": "https://www.copart.com/lot/75112845",
+    "image_url": "https://cs.copart.com/v1/AUTH_svc.pdoc00001/lpp/0126/56fb733d61fc448990b66d3497137c2a_thb.jpg",
+    "date_found": "2026-02-12 01:04"
   }
 ]
