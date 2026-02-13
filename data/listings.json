@@ -7111,5 +7111,29 @@
     "link": "https://www.iaai.com/VehicleDetail/Imp_2897177~CA",
     "image_url": "https://vis.iaai.com/resizer?imageKeys=82897177~SID~I1&width=400&height=300",
     "date_found": "2026-02-12 12:36"
+  },
+  {
+    "source": "Copart",
+    "name": "2023 VOLVO XC40 CORE",
+    "year": "2023",
+    "make_model": "VOLVO XC40 CORE",
+    "vin": "YV4L12UK2P2******",
+    "lot_number": "98264995",
+    "odometer": "75,252 (ACTUAL)",
+    "est_value": "$25,600",
+    "repair_cost": "$20,228",
+    "title_doc": "CERT OF TITLE-SALVAGE TITLE",
+    "damage": "FRONT END",
+    "secondary_damage": "MECHANICAL",
+    "bid": "",
+    "buy_now": "",
+    "auction_date": "2026-02-17 17:00",
+    "location": "IN - FORT WAYNE",
+    "engine": "2.0L  4",
+    "drive_status": "",
+    "keys": "YES",
+    "link": "https://www.copart.com/lot/98264995",
+    "image_url": "https://cs.copart.com/v1/AUTH_svc.pdoc00001/lpp/0126/cf9e3c51e3f74ca1b469b614b5429042_thb.jpg",
+    "date_found": "2026-02-13 01:08"
   }
 ]
