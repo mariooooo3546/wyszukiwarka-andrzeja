@@ -7272,5 +7272,39 @@
     "link": "https://www.ebay.com/itm/257359283794",
     "image_url": "https://i.ebayimg.com/images/g/wQMAAeSwODlpj6iw/s-l500.jpg",
     "date_found": "2026-02-14 01:01"
+  },
+  {
+    "source": "IAAI",
+    "name": "2026 VOLVO XC40 CORE, B5 AWD GAS (MILD HYBRID), DARK",
+    "year": "2026",
+    "make_model": "VOLVO XC40 CORE, B5 AWD GAS (MILD HYBRID), DARK",
+    "vin": "YV4L12UK6T2******",
+    "odometer": "1,902 mi",
+    "title_doc": "",
+    "damage": "Right Side",
+    "acv": "$0 USD",
+    "location": "Pittsburgh (Pennsylvania)",
+    "drive_status": "",
+    "keys": "Key Available",
+    "link": "https://www.iaai.com/VehicleDetail/44888954~US",
+    "image_url": "https://vis.iaai.com/resizer?imageKeys=44888954~SID~I1&width=400&height=300",
+    "date_found": "2026-02-14 12:21"
+  },
+  {
+    "source": "IAAI",
+    "name": "2022 VOLVO XC40 RECHARGE PURE ELECTRIC P8 TWIN PLUS",
+    "year": "2022",
+    "make_model": "VOLVO XC40 RECHARGE PURE ELECTRIC P8 TWIN PLUS",
+    "vin": "YV4ED3UR8N2******",
+    "odometer": "1 mi (Inoperable Digital Dash)",
+    "title_doc": "",
+    "damage": "",
+    "acv": "$24,948 USD",
+    "location": "Taunton",
+    "drive_status": "",
+    "keys": "Key Available",
+    "link": "https://www.iaai.com/VehicleDetail/44829317~US",
+    "image_url": "https://vis.iaai.com/resizer?imageKeys=44829317~SID~I1&width=400&height=300",
+    "date_found": "2026-02-14 12:21"
   }
 ]
